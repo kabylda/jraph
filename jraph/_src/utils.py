@@ -501,7 +501,13 @@ def _batch(graphs, np_):
       globals=_map_concat([g.globals for g in graphs]),
       senders=np_.concatenate([g.senders + o for g, o in zip(graphs, offsets)]),
       receivers=np_.concatenate(
-          [g.receivers + o for g, o in zip(graphs, offsets)]))
+          [g.receivers + o for g, o in zip(graphs, offsets)]),
+      n_pairs=np_.concatenate([g.n_pairs for g in graphs]),
+      i_pairs=np_.concatenate([g.i_pairs + o for g, o in zip(graphs, offsets)]),
+      j_pairs=np_.concatenate([g.j_pairs + o for g, o in zip(graphs, offsets)]),
+      d_ij_all=np_.concatenate([g.d_ij_all for g in graphs])
+      )
+
 
 
 def unbatch(graph: gn_graph.GraphsTuple) -> List[gn_graph.GraphsTuple]:
@@ -541,6 +547,7 @@ def _unbatch(graph: gn_graph.GraphsTuple, np_) -> List[gn_graph.GraphsTuple]:
 
   all_n_node = graph.n_node[:, None]
   all_n_edge = graph.n_edge[:, None]
+  # all_n_pairs = graph.n_pairs[:, None]
   node_offsets = np_.cumsum(graph.n_node[:-1])
   all_nodes = _map_split(graph.nodes, node_offsets)
   edge_offsets = np_.cumsum(graph.n_edge[:-1])
@@ -548,6 +555,8 @@ def _unbatch(graph: gn_graph.GraphsTuple, np_) -> List[gn_graph.GraphsTuple]:
   all_globals = _map_split(graph.globals, len(graph.n_node))
   all_senders = np_.split(graph.senders, edge_offsets)
   all_receivers = np_.split(graph.receivers, edge_offsets)
+  # all_i_pairs = np_.split(graph.i_pairs, edge_offsets)
+  # all_j_pairs = np_.split(graph.j_pairs, edge_offsets)
 
   # Corrects offset in the sender and receiver arrays, caused by splitting the
   # nodes array.
@@ -555,17 +564,20 @@ def _unbatch(graph: gn_graph.GraphsTuple, np_) -> List[gn_graph.GraphsTuple]:
   for graph_index in np_.arange(n_graphs)[1:]:
     all_senders[graph_index] -= node_offsets[graph_index - 1]
     all_receivers[graph_index] -= node_offsets[graph_index - 1]
+    # all_i_pairs[graph_index] -= node_offsets[graph_index - 1]
+    # all_j_pairs[graph_index] -= node_offsets[graph_index - 1]
 
   return [
       gn_graph.GraphsTuple._make(elements)
-      for elements in zip(all_nodes, all_edges, all_receivers, all_senders,
-                          all_globals, all_n_node, all_n_edge)
+      for elements in zip(all_nodes, all_edges, all_receivers, all_senders,# all_i_pairs, all_j_pairs,
+                          all_globals, all_n_node, all_n_edge)#, all_n_pairs)
   ]
 
 
 def pad_with_graphs(graph: gn_graph.GraphsTuple,
                     n_node: int,
                     n_edge: int,
+                    n_pairs: int,
                     n_graph: int = 2) -> gn_graph.GraphsTuple:
   """Pads a ``GraphsTuple`` to size by adding computation preserving graphs.
 
@@ -602,12 +614,15 @@ def pad_with_graphs(graph: gn_graph.GraphsTuple,
         f'n_graph is {n_graph}, which is smaller than minimum value of 2.')
   graph = jax.device_get(graph)
   pad_n_node = int(n_node - np.sum(graph.n_node))
+  pad_n_pairs = int(n_pairs - np.sum(graph.n_pairs))
   pad_n_edge = int(n_edge - np.sum(graph.n_edge))
   pad_n_graph = int(n_graph - graph.n_node.shape[0])
-  if pad_n_node <= 0 or pad_n_edge < 0 or pad_n_graph <= 0:
+  # print(f'n_node {n_node}, n_edge {n_edge}, n_pairs {n_pairs}, n_graph {n_graph}')
+  # print(f'pad_n_node {pad_n_node}, pad_n_edge {pad_n_edge}, pad_n_pairs {pad_n_pairs}, pad_n_graph {pad_n_graph}')
+  if pad_n_node <= 0 or pad_n_edge < 0 or pad_n_graph <= 0 or pad_n_pairs < 0:
     raise RuntimeError(
         'Given graph is too large for the given padding. difference: '
-        f'n_node {pad_n_node}, n_edge {pad_n_edge}, n_graph {pad_n_graph}')
+        f'n_node {pad_n_node}, n_edge {pad_n_edge}, n_pairs {pad_n_pairs}, n_graph {pad_n_graph}')
 
   pad_n_empty_graph = pad_n_graph - 1
 
@@ -617,7 +632,9 @@ def pad_with_graphs(graph: gn_graph.GraphsTuple,
       lambda leaf: np.zeros((pad_n_edge,) + leaf.shape[1:], dtype=leaf.dtype))
   tree_globs_pad = (
       lambda leaf: np.zeros((pad_n_graph,) + leaf.shape[1:], dtype=leaf.dtype))
-
+  # tree_pairs_pad = (
+  #     lambda leaf: np.zeros((pad_n_pairs,) + leaf.shape[1:], dtype=leaf.dtype))
+  # print('pad_n_empty_graph', pad_n_empty_graph)
   padding_graph = gn_graph.GraphsTuple(
       n_node=np.concatenate(
           [np.array([pad_n_node], dtype=np.int32),
@@ -630,6 +647,12 @@ def pad_with_graphs(graph: gn_graph.GraphsTuple,
       globals=tree.tree_map(tree_globs_pad, graph.globals),
       senders=np.zeros(pad_n_edge, dtype=np.int32),
       receivers=np.zeros(pad_n_edge, dtype=np.int32),
+      n_pairs=np.concatenate(
+          [np.array([pad_n_pairs], dtype=np.int32),
+            np.zeros(pad_n_empty_graph, dtype=np.int32)]),
+      i_pairs=np.zeros(pad_n_pairs, dtype=np.int32),
+      j_pairs=np.zeros(pad_n_pairs, dtype=np.int32),
+      d_ij_all=np.zeros(pad_n_pairs, dtype=np.float32)
   )
   return _batch([graph, padding_graph], np_=np)
 
@@ -690,6 +713,12 @@ def get_number_of_padding_with_graphs_edges(
   return padded_graph.n_edge[
       -get_number_of_padding_with_graphs_graphs(padded_graph)]
 
+def get_number_of_padding_with_graphs_pairs(
+    padded_graph: gn_graph.GraphsTuple) -> int:
+  """Returns number of padding pairs in given padded_graph.
+  """
+  return padded_graph.n_pairs[
+      -get_number_of_padding_with_graphs_graphs(padded_graph)]
 
 def unpad_with_graphs(
     padded_graph: gn_graph.GraphsTuple) -> gn_graph.GraphsTuple:
@@ -710,6 +739,7 @@ def unpad_with_graphs(
   n_padding_graph = get_number_of_padding_with_graphs_graphs(padded_graph)
   n_padding_node = get_number_of_padding_with_graphs_nodes(padded_graph)
   n_padding_edge = get_number_of_padding_with_graphs_edges(padded_graph)
+  n_padding_pairs = get_number_of_padding_with_graphs_pairs(padded_graph)
 
   def remove_edge_padding(edge_array):
     if n_padding_edge == 0:
@@ -725,6 +755,11 @@ def unpad_with_graphs(
                             padded_graph.globals),
       senders=remove_edge_padding(padded_graph.senders),
       receivers=remove_edge_padding(padded_graph.receivers),
+      n_pairs=padded_graph.n_pairs[:-n_padding_pairs],
+      i_pairs=remove_edge_padding(padded_graph.i_pairs),
+      j_pairs=remove_edge_padding(padded_graph.j_pairs),
+      d_ij_all=remove_edge_padding(padded_graph.d_ij_all)
+
   )
   return unpadded_graph
 
@@ -766,6 +801,20 @@ def get_edge_padding_mask(padded_graph: gn_graph.GraphsTuple) -> ArrayTree:
   total_num_edges = padded_graph.senders.shape[0]
   return _get_mask(padding_length=n_padding_edge, full_length=total_num_edges)
 
+def get_pair_padding_mask(padded_graph: gn_graph.GraphsTuple) -> ArrayTree:
+  """Returns a mask for the pairs of a padded graph.
+
+  Args:
+    padded_graph: ``GraphsTuple`` padded using ``pad_with_graphs``.
+
+  Returns:
+    Boolean array of shape [total_num_pairs] containing True for real edges,
+    and False for padding edges.
+  """
+
+  n_padding_pair = padded_graph.n_pairs[-get_number_of_padding_with_graphs_graphs(padded_graph)]
+  total_num_pairs = padded_graph.i_pairs.shape[0]
+  return _get_mask(padding_length=n_padding_pair, full_length=total_num_pairs)
 
 def get_graph_padding_mask(padded_graph: gn_graph.GraphsTuple) -> ArrayTree:
   """Returns a mask for the graphs of a padded graph.
@@ -921,14 +970,15 @@ def get_fully_connected_graph(n_node_per_graph: int,
   )
 
 
-_NUMBER_FIELDS = ('n_node', 'n_edge', 'n_graph')
+_NUMBER_FIELDS = ('n_node', 'n_edge', 'n_pairs', 'n_graph')
 
 
 def _get_graph_size(graphs_tuple):
   n_node = np.sum(graphs_tuple.n_node)
   n_edge = len(graphs_tuple.senders)
   n_graph = len(graphs_tuple.n_node)
-  return n_node, n_edge, n_graph
+  n_pairs = len(graphs_tuple.n_pairs)
+  return n_node, n_edge, n_pairs, n_graph
 
 
 def _is_over_batch_size(graph, graph_batch_size):
@@ -936,9 +986,15 @@ def _is_over_batch_size(graph, graph_batch_size):
   return any([x > y for x, y in zip(graph_size, graph_batch_size)])
 
 
+#write a dynamically_batch_modified function based on dynamically_batch_original function that addditionally takes n_pairs as an argument and yields a batch of graphs with n_pairs as the number of pairs in the batch. The function should raise a ValueError if n_pairs is less than 1.
+# def dynamically_batch_modified(
+#     graphs_tuple_iterator: Iterator[gn_graph.GraphsTuple], n_node: int,
+#     n_edge: int, n_graph: int, n_pairs: int) -> Generator[gn_graph.GraphsTuple, None, None]:
+  
+#I don't need to keep track of everything with n_pair, since it's maximum is defined by n_node.
 def dynamically_batch(
     graphs_tuple_iterator: Iterator[gn_graph.GraphsTuple], n_node: int,
-    n_edge: int, n_graph: int) -> Generator[gn_graph.GraphsTuple, None, None]:
+    n_edge: int, n_pairs: int, n_graph: int) -> Generator[gn_graph.GraphsTuple, None, None]:
   """Dynamically batches trees with `jraph.GraphsTuples` up to specified sizes.
 
 
@@ -967,21 +1023,22 @@ def dynamically_batch(
   if n_graph < 2:
     raise ValueError('The number of graphs in a batch size must be greater or '
                      f'equal to `2` for padding with graphs, got {n_graph}.')
-  valid_batch_size = (n_node - 1, n_edge, n_graph - 1)
+  valid_batch_size = (n_node - 1, n_edge, n_pairs, n_graph - 1)
   accumulated_graphs = []
   num_accumulated_nodes = 0
   num_accumulated_edges = 0
   num_accumulated_graphs = 0
+  num_accumulated_pairs = 0
   for element in graphs_tuple_iterator:
-    element_nodes, element_edges, element_graphs = _get_graph_size(element)
+    element_nodes, element_edges, element_pairs, element_graphs = _get_graph_size(element)
     if _is_over_batch_size(element, valid_batch_size):
       # First yield the batched graph so far if exists.
       if accumulated_graphs:
         batched_graph = batch_np(accumulated_graphs)
-        yield pad_with_graphs(batched_graph, n_node, n_edge, n_graph)
+        yield pad_with_graphs(batched_graph, n_node, n_edge, n_pairs, n_graph)
 
       # Then report the error.
-      graph_size = element_nodes, element_edges, element_graphs
+      graph_size = element_nodes, element_edges, element_pairs, element_graphs
       graph_size = {k: v for k, v in zip(_NUMBER_FIELDS, graph_size)}
       batch_size = {k: v for k, v in zip(_NUMBER_FIELDS, valid_batch_size)}
       raise RuntimeError('Found graph bigger than batch size. Valid Batch '
@@ -996,27 +1053,31 @@ def dynamically_batch(
       num_accumulated_nodes = element_nodes
       num_accumulated_edges = element_edges
       num_accumulated_graphs = element_graphs
+      num_accumulated_pairs = element_pairs
       continue
     else:
       if ((num_accumulated_graphs + element_graphs > n_graph - 1) or
           (num_accumulated_nodes + element_nodes > n_node - 1) or
-          (num_accumulated_edges + element_edges > n_edge)):
+          (num_accumulated_edges + element_edges > n_edge) or
+          (num_accumulated_pairs + element_pairs > n_pairs)):
         batched_graph = batch_np(accumulated_graphs)
-        yield pad_with_graphs(batched_graph, n_node, n_edge, n_graph)
+        yield pad_with_graphs(batched_graph, n_node, n_edge, n_pairs, n_graph)
         accumulated_graphs = [element]
         num_accumulated_nodes = element_nodes
         num_accumulated_edges = element_edges
         num_accumulated_graphs = element_graphs
+        num_accumulated_pairs = element_pairs
       else:
         accumulated_graphs.append(element)
         num_accumulated_nodes += element_nodes
         num_accumulated_edges += element_edges
         num_accumulated_graphs += element_graphs
+        num_accumulated_pairs += element_pairs
 
   # We may still have data in batched graph.
   if accumulated_graphs:
     batched_graph = batch_np(accumulated_graphs)
-    yield pad_with_graphs(batched_graph, n_node, n_edge, n_graph)
+    yield pad_with_graphs(batched_graph, n_node, n_edge, n_pairs, n_graph)
 
 
 def _expand_trailing_dimensions(array: jnp.ndarray,
