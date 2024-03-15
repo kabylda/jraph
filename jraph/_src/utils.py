@@ -984,14 +984,9 @@ def _get_graph_size(graphs_tuple):
 def _is_over_batch_size(graph, graph_batch_size):
   graph_size = _get_graph_size(graph)
   return any([x > y for x, y in zip(graph_size, graph_batch_size)])
-
-
-#write a dynamically_batch_modified function based on dynamically_batch_original function that addditionally takes n_pairs as an argument and yields a batch of graphs with n_pairs as the number of pairs in the batch. The function should raise a ValueError if n_pairs is less than 1.
-# def dynamically_batch_modified(
-#     graphs_tuple_iterator: Iterator[gn_graph.GraphsTuple], n_node: int,
-#     n_edge: int, n_graph: int, n_pairs: int) -> Generator[gn_graph.GraphsTuple, None, None]:
   
-#I don't need to keep track of everything with n_pair, since it's maximum is defined by n_node.
+#TODO: I don't need to keep track of everything with n_pair, since it's maximum is defined by n_node?
+#Maybe n_pairs are not necessary in some places.
 def dynamically_batch(
     graphs_tuple_iterator: Iterator[gn_graph.GraphsTuple], n_node: int,
     n_edge: int, n_pairs: int, n_graph: int) -> Generator[gn_graph.GraphsTuple, None, None]:
