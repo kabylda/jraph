@@ -977,7 +977,7 @@ def _get_graph_size(graphs_tuple):
   n_node = np.sum(graphs_tuple.n_node)
   n_edge = len(graphs_tuple.senders)
   n_graph = len(graphs_tuple.n_node)
-  n_pairs = len(graphs_tuple.n_pairs)
+  n_pairs = len(graphs_tuple.i_pairs)
   return n_node, n_edge, n_pairs, n_graph
 
 
