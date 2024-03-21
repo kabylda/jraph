@@ -107,4 +107,3 @@ class GraphsTuple(NamedTuple):
   n_pairs: jnp.ndarray  
   i_pairs: Optional[jnp.ndarray]  
   j_pairs: Optional[jnp.ndarray]  
-  d_ij_all: Optional[jnp.ndarray] 
