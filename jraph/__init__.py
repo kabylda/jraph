@@ -50,7 +50,6 @@ from jraph._src.utils import get_edge_padding_mask
 from jraph._src.utils import get_fully_connected_graph
 from jraph._src.utils import get_graph_padding_mask
 from jraph._src.utils import get_node_padding_mask
-from jraph._src.utils import get_pair_padding_mask
 from jraph._src.utils import get_number_of_padding_with_graphs_edges
 from jraph._src.utils import get_number_of_padding_with_graphs_graphs
 from jraph._src.utils import get_number_of_padding_with_graphs_nodes

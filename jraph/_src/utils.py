@@ -503,8 +503,8 @@ def _batch(graphs, np_):
       receivers=np_.concatenate(
           [g.receivers + o for g, o in zip(graphs, offsets)]),
       n_pairs=np_.concatenate([g.n_pairs for g in graphs]),
-      i_pairs=np_.concatenate([g.i_pairs + o for g, o in zip(graphs, offsets)]),
-      j_pairs=np_.concatenate([g.j_pairs + o for g, o in zip(graphs, offsets)])
+      i_idx_lr=np_.concatenate([g.i_idx_lr + o for g, o in zip(graphs, offsets)]),
+      j_idx_lr=np_.concatenate([g.j_idx_lr + o for g, o in zip(graphs, offsets)])
       )
 
 
@@ -546,7 +546,6 @@ def _unbatch(graph: gn_graph.GraphsTuple, np_) -> List[gn_graph.GraphsTuple]:
 
   all_n_node = graph.n_node[:, None]
   all_n_edge = graph.n_edge[:, None]
-  # all_n_pairs = graph.n_pairs[:, None]
   node_offsets = np_.cumsum(graph.n_node[:-1])
   all_nodes = _map_split(graph.nodes, node_offsets)
   edge_offsets = np_.cumsum(graph.n_edge[:-1])
@@ -554,8 +553,6 @@ def _unbatch(graph: gn_graph.GraphsTuple, np_) -> List[gn_graph.GraphsTuple]:
   all_globals = _map_split(graph.globals, len(graph.n_node))
   all_senders = np_.split(graph.senders, edge_offsets)
   all_receivers = np_.split(graph.receivers, edge_offsets)
-  # all_i_pairs = np_.split(graph.i_pairs, edge_offsets)
-  # all_j_pairs = np_.split(graph.j_pairs, edge_offsets)
 
   # Corrects offset in the sender and receiver arrays, caused by splitting the
   # nodes array.
@@ -563,13 +560,11 @@ def _unbatch(graph: gn_graph.GraphsTuple, np_) -> List[gn_graph.GraphsTuple]:
   for graph_index in np_.arange(n_graphs)[1:]:
     all_senders[graph_index] -= node_offsets[graph_index - 1]
     all_receivers[graph_index] -= node_offsets[graph_index - 1]
-    # all_i_pairs[graph_index] -= node_offsets[graph_index - 1]
-    # all_j_pairs[graph_index] -= node_offsets[graph_index - 1]
 
   return [
       gn_graph.GraphsTuple._make(elements)
-      for elements in zip(all_nodes, all_edges, all_receivers, all_senders,# all_i_pairs, all_j_pairs,
-                          all_globals, all_n_node, all_n_edge)#, all_n_pairs)
+      for elements in zip(all_nodes, all_edges, all_receivers, all_senders,
+                          all_globals, all_n_node, all_n_edge)
   ]
 
 
@@ -649,8 +644,8 @@ def pad_with_graphs(graph: gn_graph.GraphsTuple,
       n_pairs=np.concatenate(
           [np.array([pad_n_pairs], dtype=np.int32),
             np.zeros(pad_n_empty_graph, dtype=np.int32)]),
-      i_pairs=np.zeros(pad_n_pairs, dtype=np.int32),
-      j_pairs=np.zeros(pad_n_pairs, dtype=np.int32)
+      i_idx_lr=np.zeros(pad_n_pairs, dtype=np.int32),
+      j_idx_lr=np.zeros(pad_n_pairs, dtype=np.int32)
   )
   return _batch([graph, padding_graph], np_=np)
 
@@ -754,8 +749,8 @@ def unpad_with_graphs(
       senders=remove_edge_padding(padded_graph.senders),
       receivers=remove_edge_padding(padded_graph.receivers),
       n_pairs=padded_graph.n_pairs[:-n_padding_pairs],
-      i_pairs=remove_edge_padding(padded_graph.i_pairs),
-      j_pairs=remove_edge_padding(padded_graph.j_pairs)
+      i_idx_lr=remove_edge_padding(padded_graph.i_idx_lr),
+      j_idx_lr=remove_edge_padding(padded_graph.j_idx_lr)
   )
   return unpadded_graph
 
@@ -796,21 +791,6 @@ def get_edge_padding_mask(padded_graph: gn_graph.GraphsTuple) -> ArrayTree:
   n_padding_edge = get_number_of_padding_with_graphs_edges(padded_graph)
   total_num_edges = padded_graph.senders.shape[0]
   return _get_mask(padding_length=n_padding_edge, full_length=total_num_edges)
-
-def get_pair_padding_mask(padded_graph: gn_graph.GraphsTuple) -> ArrayTree:
-  """Returns a mask for the pairs of a padded graph.
-
-  Args:
-    padded_graph: ``GraphsTuple`` padded using ``pad_with_graphs``.
-
-  Returns:
-    Boolean array of shape [total_num_pairs] containing True for real edges,
-    and False for padding edges.
-  """
-
-  n_padding_pair = padded_graph.n_pairs[-get_number_of_padding_with_graphs_graphs(padded_graph)]
-  total_num_pairs = padded_graph.i_pairs.shape[0]
-  return _get_mask(padding_length=n_padding_pair, full_length=total_num_pairs)
 
 def get_graph_padding_mask(padded_graph: gn_graph.GraphsTuple) -> ArrayTree:
   """Returns a mask for the graphs of a padded graph.
@@ -973,7 +953,7 @@ def _get_graph_size(graphs_tuple):
   n_node = np.sum(graphs_tuple.n_node)
   n_edge = len(graphs_tuple.senders)
   n_graph = len(graphs_tuple.n_node)
-  n_pairs = len(graphs_tuple.i_pairs)
+  n_pairs = len(graphs_tuple.i_idx_lr)
   return n_node, n_edge, n_pairs, n_graph
 
 
