@@ -105,5 +105,5 @@ class GraphsTuple(NamedTuple):
   n_node: jnp.ndarray  # with integer dtype
   n_edge: jnp.ndarray   # with integer dtype
   n_pairs: jnp.ndarray  
-  i_idx_lr: Optional[jnp.ndarray]  
-  j_idx_lr: Optional[jnp.ndarray]  
+  idx_i_lr: Optional[jnp.ndarray]  
+  idx_j_lr: Optional[jnp.ndarray]  

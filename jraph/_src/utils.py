@@ -503,8 +503,8 @@ def _batch(graphs, np_):
       receivers=np_.concatenate(
           [g.receivers + o for g, o in zip(graphs, offsets)]),
       n_pairs=np_.concatenate([g.n_pairs for g in graphs]),
-      i_idx_lr=np_.concatenate([g.i_idx_lr + o for g, o in zip(graphs, offsets)]),
-      j_idx_lr=np_.concatenate([g.j_idx_lr + o for g, o in zip(graphs, offsets)])
+      idx_i_lr=np_.concatenate([g.idx_i_lr + o for g, o in zip(graphs, offsets)]),
+      idx_j_lr=np_.concatenate([g.idx_j_lr + o for g, o in zip(graphs, offsets)])
       )
 
 
@@ -644,8 +644,8 @@ def pad_with_graphs(graph: gn_graph.GraphsTuple,
       n_pairs=np.concatenate(
           [np.array([pad_n_pairs], dtype=np.int32),
             np.zeros(pad_n_empty_graph, dtype=np.int32)]),
-      i_idx_lr=np.zeros(pad_n_pairs, dtype=np.int32),
-      j_idx_lr=np.zeros(pad_n_pairs, dtype=np.int32)
+      idx_i_lr=np.zeros(pad_n_pairs, dtype=np.int32),
+      idx_j_lr=np.zeros(pad_n_pairs, dtype=np.int32)
   )
   return _batch([graph, padding_graph], np_=np)
 
@@ -749,8 +749,8 @@ def unpad_with_graphs(
       senders=remove_edge_padding(padded_graph.senders),
       receivers=remove_edge_padding(padded_graph.receivers),
       n_pairs=padded_graph.n_pairs[:-n_padding_pairs],
-      i_idx_lr=remove_edge_padding(padded_graph.i_idx_lr),
-      j_idx_lr=remove_edge_padding(padded_graph.j_idx_lr)
+      idx_i_lr=remove_edge_padding(padded_graph.idx_i_lr),
+      idx_j_lr=remove_edge_padding(padded_graph.idx_j_lr)
   )
   return unpadded_graph
 
@@ -953,7 +953,7 @@ def _get_graph_size(graphs_tuple):
   n_node = np.sum(graphs_tuple.n_node)
   n_edge = len(graphs_tuple.senders)
   n_graph = len(graphs_tuple.n_node)
-  n_pairs = len(graphs_tuple.i_idx_lr)
+  n_pairs = len(graphs_tuple.idx_i_lr)
   return n_node, n_edge, n_pairs, n_graph
 
 
